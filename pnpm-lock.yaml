@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@remotion/paths':
+        specifier: ^4.0.435
+        version: 4.0.435
       '@remotion/player':
         specifier: ^4.0.424
         version: 4.0.424(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -413,6 +416,9 @@ packages:
   '@nolyfill/is-core-module@1.0.39':
     resolution: {integrity: sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==}
     engines: {node: '>=12.4.0'}
+
+  '@remotion/paths@4.0.435':
+    resolution: {integrity: sha512-PTC1f7n5Dvia6pc/YQb5IGiOo4+Ic0g8DyEfomZpaAGcBEUN04m3GRp/uWHlh4jST2H2HaUZw5qDf5jjCD+SOw==}
 
   '@remotion/player@4.0.424':
     resolution: {integrity: sha512-nhEXc6dZMHL13Od7IGcNG/D58IHwCCjPhMioDAG5CCQ/c+LPirkaXGmf5TuIrd933DOWrNUpXuKDUyAOJozPqA==}
@@ -2288,6 +2294,8 @@ snapshots:
       fastq: 1.20.1
 
   '@nolyfill/is-core-module@1.0.39': {}
+
+  '@remotion/paths@4.0.435': {}
 
   '@remotion/player@4.0.424(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:

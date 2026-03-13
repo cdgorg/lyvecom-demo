@@ -7,6 +7,7 @@ import GradientSlider from "./GradientSlider";
 interface ControlPanelProps {
   params: ShaderParams;
   onChange: (params: ShaderParams) => void;
+  onCapture4K?: () => void;
 }
 
 function Slider({
@@ -74,7 +75,7 @@ function Toggle({
   );
 }
 
-export default function ControlPanel({ params, onChange }: ControlPanelProps) {
+export default function ControlPanel({ params, onChange, onCapture4K }: ControlPanelProps) {
   const [copied, setCopied] = useState(false);
 
   const set = <K extends keyof ShaderParams>(key: K, value: ShaderParams[K]) => {
@@ -128,6 +129,20 @@ export default function ControlPanel({ params, onChange }: ControlPanelProps) {
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
           )}
+        </button>
+
+        {/* Download 4K Screenshot */}
+        <button
+          onClick={onCapture4K}
+          className="flex items-center justify-center w-9 h-9 rounded-lg bg-zinc-800 hover:bg-zinc-700
+                     border border-zinc-600 text-white transition-colors shrink-0"
+          title="Download 4K screenshot"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
         </button>
 
         {/* Divider */}

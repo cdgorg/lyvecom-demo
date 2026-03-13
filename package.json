@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@remotion/paths": "^4.0.435",
     "@remotion/player": "^4.0.424",
     "framer-motion": "^12.34.3",
     "next": "16.1.6",

@@ -1,6 +1,24 @@
-import { AdInsightsPlayer } from "../components/AdInsightsPlayer";
+"use client";
+
+import { useState } from "react";
+import { FeatureCardPlayer } from "../components/FeatureCardPlayer";
+import type { TextRevealMode } from "../components/FeatureCardComposition";
+
+const cards = [
+  { key: "one" as const, label: "Card One" },
+  { key: "two" as const, label: "Card Two" },
+  { key: "three" as const, label: "Card Three" },
+];
+
+const TEXT_MODES: { value: TextRevealMode; label: string }[] = [
+  { value: "blur-stream", label: "Blur Stream" },
+  { value: "word-fade-blur", label: "Word Fade + Blur" },
+  { value: "gradient-mask", label: "Gradient Mask" },
+];
 
 export default function FeaturesPage() {
+  const [textRevealMode, setTextRevealMode] = useState<TextRevealMode>("blur-stream");
+
   return (
     <div className="min-h-screen bg-black flex items-center justify-center px-6 py-20">
       <div className="w-full max-w-[1200px] flex flex-col gap-[27px]">
@@ -14,70 +32,54 @@ export default function FeaturesPage() {
           </h2>
         </div>
 
-        {/* Bento Grid */}
-        <div className="grid grid-cols-2 gap-4">
-          {/* Card 1 — Data-Driven Insights */}
-          <div className="col-span-1 flex flex-col gap-[22px] max-w-lg">
-            <div className="rounded-2xl border border-white/[0.06] bg-[#0a0a0a] overflow-hidden aspect-[3/4] mb-4">
-              <AdInsightsPlayer />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <h3 className="text-white text-2xl font-extralight">
-                Data-Driven Insights
-              </h3>
-              <p className="text-white/50 text-base leading-relaxed">
-                Gain deep insights into user behavior across your video commerce
-                ecosystem
-              </p>
-            </div>
-          </div>
-
-          {/* Card 2 — Get paid in days */}
-          <div className="col-span-1 flex flex-col gap-[22px] max-w-lg">
-            <div className="rounded-2xl border border-white/[0.06] bg-[#0a0a0a] p-5 flex flex-col justify-center items-center aspect-[3/4] mb-4">
-              {/* Payout notification */}
-              <div className="bg-[#111] rounded-xl p-3.5 border border-white/[0.04] flex items-center gap-3 w-full">
-                <div className="w-8 h-8 rounded-lg bg-[#1a1a1a] border border-white/[0.06] flex items-center justify-center shrink-0">
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                  >
-                    <path
-                      d="M4 12L8 4L12 8"
-                      stroke="white"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] text-white/40">
-                    12 Jan 2026 | 09:00 am
-                  </p>
-                  <p className="text-xs text-white font-medium">
-                    Payout Credited
-                  </p>
-                </div>
-                <span className="text-[#4ade80] text-sm font-semibold whitespace-nowrap">
-                  +$274.54
-                </span>
+        {/* 3-Column Grid */}
+        <div className="grid grid-cols-3 gap-4">
+          {cards.map((card) => (
+            <div key={card.key} className="flex flex-col gap-[22px]">
+              <div
+                className="overflow-hidden aspect-square"
+                style={{
+                  backgroundColor: "#101010",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: 8,
+                }}
+              >
+                <FeatureCardPlayer card={card.key} textRevealMode={textRevealMode} />
               </div>
-            </div>
-
-            <div className="flex flex-col gap-1">
               <h3 className="text-white text-2xl font-extralight">
-                Get paid in days, not weeks
+                {card.label}
               </h3>
-              <p className="text-white/50 text-base leading-relaxed">
-                Payouts from LYVECOM will let your business and cash flow run
-                non-stop
-              </p>
             </div>
-          </div>
+          ))}
+        </div>
+
+        {/* Text Reveal Mode Toggle */}
+        <div className="flex items-center justify-center gap-2 mt-8">
+          {TEXT_MODES.map((mode) => (
+            <button
+              key={mode.value}
+              onClick={() => setTextRevealMode(mode.value)}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                border: textRevealMode === mode.value
+                  ? "1px solid rgba(114,161,191,0.4)"
+                  : "1px solid rgba(255,255,255,0.1)",
+                backgroundColor: textRevealMode === mode.value
+                  ? "rgba(114,161,191,0.12)"
+                  : "rgba(255,255,255,0.04)",
+                color: textRevealMode === mode.value
+                  ? "#72A1BF"
+                  : "rgba(255,255,255,0.5)",
+                transition: "all 0.2s ease",
+              }}
+            >
+              {mode.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>

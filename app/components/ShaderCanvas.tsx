@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -34,6 +34,10 @@ export interface ShaderParams {
 interface ShaderCanvasProps {
   params: ShaderParams;
   className?: string;
+}
+
+export interface ShaderCanvasHandle {
+  capture4K: () => Promise<void>;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -380,7 +384,7 @@ interface GLResources {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function ShaderCanvas({ params, className }: ShaderCanvasProps) {
+const ShaderCanvas = forwardRef<ShaderCanvasHandle, ShaderCanvasProps>(function ShaderCanvas({ params, className }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glRef = useRef<WebGL2RenderingContext | null>(null);
   const rafRef = useRef<number>(0);
@@ -391,6 +395,182 @@ export default function ShaderCanvas({ params, className }: ShaderCanvasProps) {
 
   // Keep params ref in sync without re-running effect
   paramsRef.current = params;
+
+  useImperativeHandle(ref, () => ({
+    capture4K: async () => {
+      const gl = glRef.current;
+      const res = resourcesRef.current;
+      if (!gl || !res) return;
+
+      const p = paramsRef.current;
+      const W = 3840;
+      const H = 2160;
+      const HW = W >> 1;
+      const HH = H >> 1;
+      const captureDpr = W / (res.width / res.dpr);
+
+      const tmpScene = createFBO(gl, W, H);
+      const tmpBright = createFBO(gl, HW, HH);
+      const tmpBlur1 = createFBO(gl, HW, HH);
+      const tmpBlur2 = createFBO(gl, HW, HH);
+
+      const tmpCompTex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tmpCompTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const tmpCompFbo = gl.createFramebuffer()!;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, tmpCompFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tmpCompTex, 0);
+
+      const {
+        dotProg, dotU,
+        brightProg, brightU,
+        blurProg, blurU,
+        compositeProg, compositeU,
+        vao,
+      } = res;
+
+      gl.bindVertexArray(vao);
+
+      // Pass 1: Dot Grid -> tmpScene
+      gl.bindFramebuffer(gl.FRAMEBUFFER, tmpScene.fbo);
+      gl.viewport(0, 0, W, H);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      gl.useProgram(dotProg);
+      gl.uniform2f(dotU.uResolution, W, H);
+      gl.uniform1f(dotU.uTime, timeRef.current);
+      gl.uniform1f(dotU.uCircleSize, p.circleSize * captureDpr);
+      gl.uniform1f(dotU.uSpacing, p.spacing * captureDpr);
+      gl.uniform1f(dotU.uNoiseScale, p.noiseScale);
+      gl.uniform1f(dotU.uNoiseSeed, p.noiseSeed);
+      gl.uniform1f(dotU.uNoiseSpeed, p.noiseSpeed);
+      gl.uniform1i(dotU.uNoiseOctaves, p.noiseOctaves);
+      gl.uniform1f(dotU.uContrast, p.contrast);
+      gl.uniform1f(dotU.uWaveFreq, p.waveFrequency);
+      gl.uniform1f(dotU.uWaveAmp, p.waveAmplitude);
+      gl.uniform1f(dotU.uWaveAngle, p.waveAngle);
+      gl.uniform1f(dotU.uNoiseEnabled, p.noiseEnabled ? 1.0 : 0.0);
+      gl.uniform1f(dotU.uWaveEnabled, p.waveEnabled ? 1.0 : 0.0);
+      gl.uniform1f(dotU.uDistortionEnabled, p.distortionEnabled ? 1.0 : 0.0);
+      gl.uniform1f(dotU.uDistortionAmount, p.distortionAmount);
+      gl.uniform1f(dotU.uDistortionScale, p.distortionScale);
+
+      const sorted = [...p.colorStops].sort((a, b) => a.pos - b.pos);
+      const numStops = Math.min(sorted.length, 10);
+      const posArr = new Float32Array(10);
+      const colArr = new Float32Array(30);
+      for (let i = 0; i < numStops; i++) {
+        posArr[i] = sorted[i].pos;
+        const rgb = hexToVec3(sorted[i].color);
+        colArr[i * 3] = rgb[0];
+        colArr[i * 3 + 1] = rgb[1];
+        colArr[i * 3 + 2] = rgb[2];
+      }
+      gl.uniform1i(dotU.uNumStops, numStops);
+      gl.uniform1fv(dotU.uStopPos, posArr);
+      gl.uniform3fv(dotU.uStopCol, colArr);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      // Pass 2: Bright extract -> tmpBright
+      gl.bindFramebuffer(gl.FRAMEBUFFER, tmpBright.fbo);
+      gl.viewport(0, 0, HW, HH);
+      gl.useProgram(brightProg);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tmpScene.tex);
+      gl.uniform1i(brightU.uTexture, 0);
+      gl.uniform1f(brightU.uThreshold, p.bloomThreshold);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      // Passes 3-4: Two iterations of separable Gaussian blur
+      gl.useProgram(blurProg);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, tmpBlur1.fbo);
+      gl.viewport(0, 0, HW, HH);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tmpBright.tex);
+      gl.uniform1i(blurU.uTexture, 0);
+      gl.uniform2f(blurU.uDirection, 1.0 / HW, 0.0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, tmpBlur2.fbo);
+      gl.bindTexture(gl.TEXTURE_2D, tmpBlur1.tex);
+      gl.uniform2f(blurU.uDirection, 0.0, 1.0 / HH);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, tmpBlur1.fbo);
+      gl.bindTexture(gl.TEXTURE_2D, tmpBlur2.tex);
+      gl.uniform2f(blurU.uDirection, 1.0 / HW, 0.0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, tmpBlur2.fbo);
+      gl.bindTexture(gl.TEXTURE_2D, tmpBlur1.tex);
+      gl.uniform2f(blurU.uDirection, 0.0, 1.0 / HH);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      // Pass 5: Composite -> tmpCompFbo
+      gl.bindFramebuffer(gl.FRAMEBUFFER, tmpCompFbo);
+      gl.viewport(0, 0, W, H);
+      gl.useProgram(compositeProg);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tmpScene.tex);
+      gl.uniform1i(compositeU.uScene, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, tmpBlur2.tex);
+      gl.uniform1i(compositeU.uBloom, 1);
+      gl.uniform1f(compositeU.uBloomStrength, p.bloomStrength);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      // Read pixels and download as PNG
+      const pixels = new Uint8Array(W * H * 4);
+      gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+      const rowSize = W * 4;
+      const flipped = new Uint8ClampedArray(W * H * 4);
+      for (let y = 0; y < H; y++) {
+        flipped.set(
+          pixels.subarray((H - 1 - y) * rowSize, (H - y) * rowSize),
+          y * rowSize,
+        );
+      }
+
+      const offscreen = document.createElement("canvas");
+      offscreen.width = W;
+      offscreen.height = H;
+      const ctx2d = offscreen.getContext("2d")!;
+      ctx2d.putImageData(new ImageData(flipped, W, H), 0, 0);
+
+      const blob = await new Promise<Blob | null>((resolve) =>
+        offscreen.toBlob(resolve, "image/png"),
+      );
+
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `shader-4k-${Date.now()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      // Cleanup temporary resources
+      gl.deleteFramebuffer(tmpScene.fbo);
+      gl.deleteTexture(tmpScene.tex);
+      gl.deleteFramebuffer(tmpBright.fbo);
+      gl.deleteTexture(tmpBright.tex);
+      gl.deleteFramebuffer(tmpBlur1.fbo);
+      gl.deleteTexture(tmpBlur1.tex);
+      gl.deleteFramebuffer(tmpBlur2.fbo);
+      gl.deleteTexture(tmpBlur2.tex);
+      gl.deleteFramebuffer(tmpCompFbo);
+      gl.deleteTexture(tmpCompTex);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    },
+  }));
 
   const setupGL = useCallback(() => {
     const canvas = canvasRef.current;
@@ -608,4 +788,6 @@ export default function ShaderCanvas({ params, className }: ShaderCanvasProps) {
       style={{ display: "block" }}
     />
   );
-}
+});
+
+export default ShaderCanvas;
